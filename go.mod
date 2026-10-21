@@ -1,7 +1,6 @@
 module github.com/xoai/sage-wiki
 
-go 1.26
-toolchain go1.26.6
+go 1.26.10
 
 require (
 	github.com/charmbracelet/bubbles v1.0.0
@@ -23,7 +22,7 @@ require (
 	github.com/viterin/vek v0.4.2
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/sys v0.47.0
-	golang.org/x/text v0.40.0
+	golang.org/x/text v0.41.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.48.1
 )
