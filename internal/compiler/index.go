@@ -165,7 +165,30 @@ func indexAndEmbedSources(
 	}
 
 	// Step 2: Embed (parallel via BackpressureController or fixed semaphore)
+	//
+	// Issue #218: with no embedder (BM25-only — an officially supported
+	// configuration) the embedding pass has NO WORK, not FAILED work. Mark
+	// the pass done for every claimed-and-indexed source so pendingWhere(1)
+	// stops re-claiming them every compile ("N items → Done: 0/N" churn
+	// forever). Two honest limits, NOT a backfill:
+	//   - This is churn-stop, not vector generation: reconcile never
+	//     backfills summary or src: vectors (only articles), so docs
+	//     compiled BM25-only keep no source vectors until an explicit
+	//     `--re-embed`.
+	//   - Items errored in Step 1 (MarkError'd above) are excluded — they
+	//     must stay pending for retry, mirroring the real path's treatment.
 	if embedder == nil {
+		for _, src := range sources {
+			// Mirror the real embed loop's guards: already-done, and the
+			// Step-1 extract-errored (MarkError'd) items stay pending for
+			// retry — vacuous-but-sticky flags would hide real failures.
+			if src.PassEmbedded || src.Error != "" {
+				continue
+			}
+			if err := items.MarkPass(src.SourcePath, "embedded"); err != nil {
+				log.Warn("mark pass failed (no embedder)", "path", src.SourcePath, "pass", "embedded", "error", err)
+			}
+		}
 		return indexed, 0
 	}
 

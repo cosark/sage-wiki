@@ -16,7 +16,7 @@ import (
 )
 
 // skipStub serves summarize/extract/write/embed for one doc — enough for a
-// tier-3 doc to COMPLETE (embed must succeed or tierComplete never fires).
+// tier-3 doc to COMPLETE (embed affects tier-1 completeness only (issue #218 relaxed tier 3)).
 func skipStub(t *testing.T) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
