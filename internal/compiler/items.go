@@ -681,6 +681,16 @@ func (s *CompileItemStore) Heartbeat(owner string, paths []string, ttl time.Dura
 
 // tierComplete reports whether every pass applicable to the item's tier is
 // done — the same predicate as the V9 backfill (spec C1).
+//
+// Tier 3 deliberately does NOT require PassEmbedded (issue #218): embedding
+// is an optional enhancement of the LLM pipeline, and a BM25-only workspace
+// (embedder nil — an officially supported configuration) has no embedding
+// work at all. Requiring it deadlocked tier-3 items in a state no path
+// advanced: pendingWhere(1) re-claimed them forever, tierComplete blocked
+// R4 skip AND R1 --force in skip.go, and the empty-diff fast path (which
+// runs before the tier passes) kept even a later-configured embedder from
+// ever clearing the flag on an existing corpus. The postgres twin
+// (tierCompletePG) must stay in lockstep. KEEP tierCompletePG IN SYNC.
 func tierComplete(it *CompileItem) bool {
 	if !it.PassIndexed {
 		return false
@@ -693,7 +703,7 @@ func tierComplete(it *CompileItem) bool {
 	case 2:
 		return it.PassEmbedded && it.PassParsed
 	default: // tier 3
-		return it.PassEmbedded && it.PassSummarized && it.PassExtracted && it.PassWritten
+		return it.PassSummarized && it.PassExtracted && it.PassWritten
 	}
 }
 

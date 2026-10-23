@@ -156,6 +156,20 @@ func classifySkipsForMode(
 				if _, ok := spuriousAdded[path]; ok {
 					out.classifiedSpuriousAdded = append(out.classifiedSpuriousAdded, path)
 				}
+			} else {
+				// Tier<3 incompletes and tier-3 LLM-complete-but-embedding-owed
+				// items are the tier passes' own claim domain — deliberately NOT
+				// injected (permanently-failing embeds would recompile forever).
+				// They used to fall through SILENTLY (issue #218's diagnosability
+				// gap): a log line, never out.skipped (that list is the SPEC-04
+				// key-skip surface — an API-documented Reason enum, per-compile
+				// compile_skip events, and totals double-counting).
+				log.Debug("classify: tier-incomplete item left to tier passes",
+					"path", path, "tier", item.Tier,
+					"indexed", item.PassIndexed, "embedded", item.PassEmbedded,
+					"parsed", item.PassParsed,
+					"summarized", item.PassSummarized, "extracted", item.PassExtracted,
+					"written", item.PassWritten)
 			}
 			continue
 		}

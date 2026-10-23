@@ -619,6 +619,8 @@ func (s *itemStore) Release(path string, owner string, outcome store.ReleaseOutc
 }
 
 // tierCompletePG mirrors compiler/items.go tierComplete.
+// Tier 3 does not require PassEmbedded (issue #218) — keep in lockstep with
+// the sqlite predicate or Release() diverges between backends.
 func tierCompletePG(it *store.CompileItem) bool {
 	if !it.PassIndexed {
 		return false
@@ -631,7 +633,7 @@ func tierCompletePG(it *store.CompileItem) bool {
 	case 2:
 		return it.PassEmbedded && it.PassParsed
 	default:
-		return it.PassEmbedded && it.PassSummarized && it.PassExtracted && it.PassWritten
+		return it.PassSummarized && it.PassExtracted && it.PassWritten
 	}
 }
 

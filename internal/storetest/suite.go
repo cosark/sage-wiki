@@ -871,6 +871,35 @@ func CompileItemsQueueConformance(new BackendFactory) func(*testing.T) {
 			t.Errorf("Release(done) tier-complete: status=%q, want done", got.Status)
 		}
 
+		// Release(done) tier-3 WITHOUT embedded → done (issue #218): embedding
+		// is optional for the LLM tier; both backends must agree or Release
+		// diverges sqlite-vs-postgres. Claimable at tier 3 (written owed),
+		// then the last LLM pass completes; PassEmbedded stays 0 — exactly
+		// the BM25-only workspace state that used to deadlock Release into
+		// pending-forever.
+		if err := is.Upsert(store.CompileItem{SourcePath: "q5.md", Hash: "h5", Tier: 3,
+			PassIndexed: true, PassEmbedded: false,
+			PassSummarized: true, PassExtracted: true, PassWritten: false}); err != nil {
+			t.Fatal(err)
+		}
+		claimed5, err := is.Claim(3, "w5", time.Hour, 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(claimed5) != 1 || claimed5[0].SourcePath != "q5.md" {
+			t.Fatalf("Claim(3) tier-3 no-embed: got %d items, want q5.md", len(claimed5))
+		}
+		if err := is.MarkPass("q5.md", "written"); err != nil {
+			t.Fatal(err)
+		}
+		if err := is.Release("q5.md", "w5", store.ReleaseDone); err != nil {
+			t.Fatal(err)
+		}
+		got, _ = is.GetByPath("q5.md")
+		if got.Status != "done" {
+			t.Errorf("Release(done) tier-3 no-embed: status=%q, want done (issue #218)", got.Status)
+		}
+
 		// Release(failed): dead-lettered, excluded from future claims.
 		if err := is.Release("q2.md", "w1", store.ReleaseFailed); err != nil {
 			t.Fatal(err)
