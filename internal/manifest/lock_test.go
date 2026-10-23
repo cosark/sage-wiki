@@ -174,14 +174,26 @@ func TestLockLiveHolderNotReclaimed(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".manifest.json")
 
-	// A live holder with a short stale threshold but an active heartbeat.
-	l1, err := acquireLockOpts(context.Background(), path, fastLockOpts())
+	// Sighting #8 (2026-10-23, Windows): even with the freshness gate
+	// below, the heartbeat can starve between the gate and the waiter's
+	// stale check — fastLockOpts' 15ms heartbeat vs a 100ms threshold is
+	// ~7 missed beats of margin, which Windows runners under load DO cross.
+	// Scale this TEST's margins so scheduler noise cannot cross the
+	// threshold: the invariant (a heartbeating holder is never reclaimed)
+	// is scale-invariant; the timing constants are not. 500ms threshold,
+	// 25ms heartbeat = 20 beats of margin.
+	holderOpts := fastLockOpts()
+	holderOpts.staleThreshold = 500 * time.Millisecond
+	holderOpts.heartbeatInterval = 25 * time.Millisecond
+
+	// A live holder with a generous stale threshold and an active heartbeat.
+	l1, err := acquireLockOpts(context.Background(), path, holderOpts)
 	if err != nil {
 		t.Fatalf("acquire l1: %v", err)
 	}
 
 	// Wait well past the stale threshold. The heartbeat must keep l1 alive.
-	time.Sleep(4 * fastLockOpts().staleThreshold)
+	time.Sleep(4 * holderOpts.staleThreshold)
 
 	// EVENT-DRIVEN freshness gate (Windows sightings x7, all rerun-clean):
 	// a fixed sleep assumes the heartbeat goroutine was scheduled — under
@@ -197,19 +209,23 @@ func TestLockLiveHolderNotReclaimed(t *testing.T) {
 			t.Fatalf("stat lock: %v", err)
 		}
 		age := time.Since(fi.ModTime())
-		if age < fastLockOpts().staleThreshold {
+		if age < holderOpts.staleThreshold {
 			break // heartbeat is observably alive
 		}
 		if time.Now().After(freshDeadline) {
 			t.Fatalf("heartbeat never refreshed the lock mtime within 5s (age %v)", age)
 		}
-		time.Sleep(fastLockOpts().heartbeatInterval)
+		time.Sleep(holderOpts.heartbeatInterval)
 	}
 
 	// A waiter with a bounded timeout must NOT reclaim the live holder.
-	opts := fastLockOpts()
-	opts.timeout = 150 * time.Millisecond
-	if _, err := acquireLockOpts(context.Background(), path, opts); err == nil {
+	// The waiter uses the SAME scaled threshold as the holder: reclaiming
+	// requires the heartbeat to miss 20 beats (500ms) — half a second of
+	// goroutine starvation, which does not happen on a runner that just
+	// served the freshness gate.
+	waiterOpts := holderOpts
+	waiterOpts.timeout = 1500 * time.Millisecond
+	if _, err := acquireLockOpts(context.Background(), path, waiterOpts); err == nil {
 		t.Fatal("waiter reclaimed a LIVE holder — heartbeat failed to protect it")
 	}
 
